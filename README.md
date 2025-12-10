@@ -1,6 +1,6 @@
 # Image2Biomass Kaggle Competition
 
-This repository contains code and resources for the Image2Biomass Kaggle competition hosted by CSIRO. The goal of this competition is to develop models that can accurately predict biomass of grass from images.
+This repository contains code and resources for the [Image2Biomass Kaggle competition](https://www.kaggle.com/competitions/csiro-biomass) hosted by CSIRO. The goal of this competition is to develop models that can accurately predict biomass of grass from images.
 
 The work is done as part of the [Deep Learning Course in KSE](https://github.com/AI301-Deep-Learning/kse_deep_learning).
 
