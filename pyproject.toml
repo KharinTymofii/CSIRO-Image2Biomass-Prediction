@@ -1,7 +1,7 @@
 [project]
-name = "Project Name"
+name = "Image2Biomass"
 version = "0.1.0"
-description = "Add your description here"
+description = "Project for kaggle competition Image2Biomass"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
