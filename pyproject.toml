@@ -6,4 +6,48 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "colorama>=0.4.6",
+    "ipykernel>=7.1.0",
+    "numpy>=2.3.5",
+    "pandas>=2.3.3",
+    "matplotlib>=3.10.7",
+    "pytorch-lightning>=2.6.0",
+    "tqdm>=4.67.1",
+    "transformers>=4.57.3",
+    "wandb>=0.23.1",
+    "nbformat>=5.10.4",
+    "pillow>=12.0.0",
 ]
+
+# https://docs.astral.sh/uv/guides/integration/pytorch/#configuring-accelerators-with-environment-markers
+[project.optional-dependencies]
+cpu = [
+  "torch>=2.9.0",
+]
+gpu = [
+  "torch>=2.9.0",
+]
+
+# uv sync --extra gpu
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "gpu" },
+  ],
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu128", extra = "gpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
