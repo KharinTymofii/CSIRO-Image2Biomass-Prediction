@@ -209,3 +209,10 @@ __marimo__/
 # Local Kaggle data folder
 notebooks/kaggle/input/csiro-biomass/
 # there located train.csv, test.csv, train/ and test/ folders
+
+# Local model checkpoints
+checkpoints/
+
+# Weights and Biases folder
+wandb/
+
