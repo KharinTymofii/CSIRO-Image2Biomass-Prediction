@@ -196,6 +196,9 @@ class BiomassImprovedCNN(pl.LightningModule):
         """
         super().__init__()
         self.save_hyperparameters()
+        
+        self.kaggle_score = kaggle_score
+        # self.save_hyperparameters(ignore=['kaggle_score'])
 
         self.num_targets = num_targets
         self.use_log_target = use_log_target
@@ -233,7 +236,7 @@ class BiomassImprovedCNN(pl.LightningModule):
 
         # Projection to reduce dimensionality (critical for memory!)
         # pooled_dim = 12800
-        pooled_dim = 512  # Much smaller dimension
+        pooled_dim = 4096  # Much smaller dimension
         self.projection = nn.Sequential(
             nn.Linear(raw_pooled_dim, pooled_dim),
             nn.LayerNorm(pooled_dim),
@@ -292,11 +295,10 @@ class BiomassImprovedCNN(pl.LightningModule):
         self.scheduler_type = scheduler
 
         self.validation_step_outputs = []
-        self.kaggle_score = kaggle_score
 
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
         """Extract features from backbone."""
-        features = self.backbone.forward_features(x)
+        features = self.backbone.forward_features(x)  # type: ignore
 
         # Apply spatial attention if enabled
         if self.use_spatial_attention:
@@ -358,8 +360,15 @@ class BiomassImprovedCNN(pl.LightningModule):
         return {'prediction': pred}
 
     def compute_loss(self, preds: dict, targets: torch.Tensor) -> dict:
-        """Compute Huber loss."""
+        """Compute Huber loss or MSE/ MAE loss."""
+        # Huber Loss
         loss = F.huber_loss(preds['prediction'], targets, delta=1.0)
+        
+        # MSE Loss
+        # loss = F.mse_loss(preds['prediction'], targets)
+        
+        # MAE Loss
+        # loss = F.l1_loss(preds['prediction'], targets)
         return {'loss': loss}
 
     @staticmethod
@@ -367,7 +376,7 @@ class BiomassImprovedCNN(pl.LightningModule):
         """Utility to get backbone output dimension."""
         dummy = torch.randn(1, 3, input_size, input_size)
         with torch.no_grad():
-            backbone_output = backbone.forward_features(dummy)
+            backbone_output = backbone.forward_features(dummy)  # type: ignore
 
         if hasattr(backbone_output, 'shape'):
             # Assuming output is [B, C, H, W]
