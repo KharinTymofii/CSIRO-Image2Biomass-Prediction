@@ -107,42 +107,30 @@ class BiomassConvNeXt(pl.LightningModule):
         self.validation_step_outputs = []
         self.kaggle_score = kaggle_score
 
-    def forward(self, batch: dict) -> dict:
+    def forward(self, left_img: torch.Tensor, right_img: torch.Tensor) -> dict[str, torch.Tensor]:
         """
         Forward pass with dual-head processing.
 
         Args:
-            batch: Dict with 'left_image' and 'right_image' tensors
+            left_img: Left image tensor
+            right_img: Right image tensor
 
         Returns:
-            Dict with 'global' and 'local' predictions
+            Tensor with predictions for biomass
         """
-        # Extract features from both patches using DINOv2
-        left_outputs = self.backbone(batch['left_image'])
-        left_features = left_outputs.last_hidden_state  # [B, N_patches+1, 768]
+        # Extract features from the backbone
+        left_features = self.backbone(left_img)
+        right_features = self.backbone(right_img)
 
-        right_outputs = self.backbone(batch['right_image'])
-        right_features = right_outputs.last_hidden_state
-        right_patches = right_features[:, 1:, :]
+        # Combine features from both images
+        combined_features = torch.cat((left_features, right_features), dim=1)
 
-        # =================================================================
-        # HEAD 1: GLOBAL APPROACH
-        # Average pool each side -> concatenate -> predict
-        # =================================================================
-        left_pooled = left_patches.mean(dim=1)  # [B, 768]
-        right_pooled = right_patches.mean(dim=1)  # [B, 768]
+        # Pass through a linear layer to predict biomass
+        pred_global = self.head_global(combined_features)
 
-        global_context = torch.cat(
-            [left_pooled, right_pooled], dim=1)  # [B, 1536]
-        pred_global = self.head_global(global_context)  # [B, 3]
-
-        # =================================================================
-        # HEAD 2: LOCAL APPROACH (Sum of Parts)
-        # Predict for each side separately, then sum
-        # =================================================================
-        pred_left = self.head_local(left_pooled)  # [B, 3]
-        pred_right = self.head_local(right_pooled)  # [B, 3]
-        pred_local = pred_left + pred_right  # [B, 3] - sum of masses
+        pred_left = self.head_local(left_features)
+        pred_right = self.head_local(right_features)
+        pred_local = pred_left + pred_right
 
         return {
             'global': pred_global,
@@ -178,7 +166,7 @@ class BiomassConvNeXt(pl.LightningModule):
         }
 
     def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
-        preds = self(batch)
+        preds = self(batch['left_image'], batch['right_image'])
         targets = batch['targets']  # [B, 3]
         losses = self.compute_loss(preds, targets)
 
@@ -194,7 +182,7 @@ class BiomassConvNeXt(pl.LightningModule):
         return losses['loss_total']
 
     def validation_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
-        preds = self(batch)
+        preds = self(batch['left_image'], batch['right_image'])
         targets = batch['targets']
         losses = self.compute_loss(preds, targets)
 
