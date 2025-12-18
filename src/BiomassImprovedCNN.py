@@ -360,7 +360,7 @@ class BiomassImprovedCNN(pl.LightningModule):
         return {'prediction': pred}
 
     def compute_loss(self, preds: dict, targets: torch.Tensor) -> dict:
-        """Compute Huber loss or MSE/ MAE loss."""
+        """Compute Huber loss or MSE, MAE loss."""
         # Huber Loss
         loss = F.huber_loss(preds['prediction'], targets, delta=1.0)
         
@@ -418,7 +418,7 @@ class BiomassImprovedCNN(pl.LightningModule):
         targets = batch['targets']
         losses = self.compute_loss(preds, targets)
 
-        self.log('train/loss', losses['loss'],
+        self.log('train_loss', losses['loss'],
                  on_step=True, on_epoch=True, prog_bar=True)
 
         return losses['loss']
@@ -428,7 +428,7 @@ class BiomassImprovedCNN(pl.LightningModule):
         targets = batch['targets']
         losses = self.compute_loss(preds, targets)
 
-        self.log('val/loss', losses['loss'],
+        self.log('val_loss', losses['loss'],
                  on_step=False, on_epoch=True, prog_bar=True)
 
         # Convert back from log space if needed
@@ -471,7 +471,7 @@ class BiomassImprovedCNN(pl.LightningModule):
         # Compute competition metric (weighted R2)
         r2_score = self.kaggle_score(y_true_5.numpy(), y_pred_5.numpy())
 
-        self.log('val/r2_score', r2_score, on_epoch=True, prog_bar=True)
+        self.log('val_r2_score', r2_score, on_epoch=True, prog_bar=True)
 
         self.validation_step_outputs.clear()
 
@@ -519,7 +519,7 @@ class BiomassImprovedCNN(pl.LightningModule):
                 'optimizer': optimizer,
                 'lr_scheduler': {
                     'scheduler': scheduler,
-                    'monitor': 'val/r2_score',
+                    'monitor': 'val_r2_score',
                     'interval': 'epoch'
                 }
             }
