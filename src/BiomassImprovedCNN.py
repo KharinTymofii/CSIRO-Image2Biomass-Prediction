@@ -57,7 +57,7 @@ class BiomassImprovedCNN(pl.LightningModule):
         """
         super().__init__()
         self.save_hyperparameters()
-        
+
         self.kaggle_score = kaggle_score
         # self.save_hyperparameters(ignore=['kaggle_score'])
 
@@ -85,9 +85,11 @@ class BiomassImprovedCNN(pl.LightningModule):
             for param in self.backbone.parameters():
                 param.requires_grad = False
 
-        # Spatial attention
-        if use_spatial_attention:
+        # Spatial attention (only if valid hidden dim)
+        if use_spatial_attention and self.backbone_hidden_dim > 0:
             self.spatial_attn = SpatialAttention(self.backbone_hidden_dim)
+        else:
+            self.spatial_attn = None
 
         # Multi-scale pooling
         self.multi_scale_pool = MultiScalePooling(self.backbone_hidden_dim)
@@ -158,11 +160,34 @@ class BiomassImprovedCNN(pl.LightningModule):
         self.validation_step_outputs = []
 
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
-        """Extract features from backbone."""
+        """Extract features from backbone (supports both CNN and ViT)."""
         features = self.backbone.forward_features(x)  # type: ignore
 
-        # Apply spatial attention if enabled
-        if self.use_spatial_attention:
+        # Handle different backbone output formats
+        if len(features.shape) == 3:
+            # Transformer-based models: [B, num_patches, embed_dim]
+            B, N, C = features.shape
+
+            # Remove CLS token if present
+            has_cls = (N - 1) == int((N - 1) ** 0.5) ** 2
+            if has_cls:
+                features = features[:, 1:, :]  # Remove CLS token
+                N = N - 1
+
+            H = W = int(N ** 0.5)
+
+            # Verify dimensions are valid
+            if H * W == N:
+                # Reshape to [B, C, H, W] for spatial operations
+                features = features.transpose(1, 2).reshape(B, C, H, W)
+            else:
+                # Cannot reshape - use global pooling
+                features = features.mean(dim=1, keepdim=True)  # [B, 1, C]
+                features = features.transpose(
+                    1, 2).unsqueeze(-1)  # [B, C, 1, 1]
+
+        # Apply spatial attention if enabled and feature map is valid
+        if self.spatial_attn is not None and features.shape[2] > 1 and features.shape[3] > 1:
             features = self.spatial_attn(features)
 
         # Multi-scale pooling
@@ -224,27 +249,43 @@ class BiomassImprovedCNN(pl.LightningModule):
         """Compute Huber loss or MSE, MAE loss."""
         # Huber Loss
         loss = F.huber_loss(preds['prediction'], targets, delta=1.0)
-        
+
         # MSE Loss
         # loss = F.mse_loss(preds['prediction'], targets)
-        
+
         # MAE Loss
         # loss = F.l1_loss(preds['prediction'], targets)
         return {'loss': loss}
 
     @staticmethod
     def _get_backbone_output_dim(backbone: nn.Module, input_size: int) -> int:
-        """Utility to get backbone output dimension."""
+        """Utility to get backbone output dimension (handles CNN and ViT)."""
         dummy = torch.randn(1, 3, input_size, input_size)
         with torch.no_grad():
             backbone_output = backbone.forward_features(dummy)  # type: ignore
 
+        # Debug: print what we're getting
+        print(f"DEBUG: backbone output shape = {backbone_output.shape}")
+
         if hasattr(backbone_output, 'shape'):
-            # Assuming output is [B, C, H, W]
-            backbone_out_dim = backbone_output.shape[1]
+            # Handle different output formats
+            if len(backbone_output.shape) == 4:
+                # CNN output: [B, C, H, W]
+                backbone_out_dim = backbone_output.shape[1]
+                print(
+                    f"DEBUG: 4D tensor detected, using shape[1] = {backbone_out_dim}")
+            elif len(backbone_output.shape) == 3:
+                # ViT/Swin output: [B, num_patches, embed_dim]
+                backbone_out_dim = backbone_output.shape[2]  # embed_dim
+                print(
+                    f"DEBUG: 3D tensor detected, using shape[2] = {backbone_out_dim}")
+            else:
+                raise ValueError(
+                    f"Unexpected backbone output shape: {backbone_output.shape}")
         else:
             raise ValueError("Cannot determine backbone output dimension.")
 
+        print(f"DEBUG: Final backbone_hidden_dim = {backbone_out_dim}")
         return backbone_out_dim
 
     @staticmethod
