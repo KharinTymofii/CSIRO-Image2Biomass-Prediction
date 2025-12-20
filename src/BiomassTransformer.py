@@ -72,6 +72,8 @@ class BiomassTransformer(pl.LightningModule):
             global_pool=''  # We'll do custom pooling
         )
 
+        self._freeze_backbone = freeze_backbone
+
         # Get backbone output dimension
         self.backbone_hidden_dim = self._get_backbone_output_dim(
             self.backbone, input_size=backbone_input_size
@@ -80,9 +82,10 @@ class BiomassTransformer(pl.LightningModule):
         print(f"Backbone output dimension: {self.backbone_hidden_dim}")
 
         # Freeze/unfreeze backbone
-        if freeze_backbone:
+        if self._freeze_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
+            self.backbone.eval()
 
         # Feature dimension after global pooling
         feature_dim = self.backbone_hidden_dim
@@ -156,7 +159,7 @@ class BiomassTransformer(pl.LightningModule):
         """Get backbone output dimension for Transformers."""
         dummy = torch.randn(1, 3, input_size, input_size)
         with torch.no_grad():
-            output = backbone.forward_features(dummy)
+            output = backbone.forward_features(dummy)  # type: ignore
 
         print(f"DEBUG: Backbone output shape = {output.shape}")
 
@@ -179,10 +182,22 @@ class BiomassTransformer(pl.LightningModule):
             raise ValueError(f"Unexpected output shape: {output.shape}")
 
         return dim
+    
+    def train(self, mode: bool = True):
+        """Override train() to keep backbone in eval mode if frozen."""
+        super().train(mode)
+        if self._freeze_backbone:
+            self.backbone.eval()
+        return self
 
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
         """Extract and pool features from Transformer backbone."""
-        features = self.backbone.forward_features(x)
+        # Use torch.no_grad() for frozen backbone during training
+        if self._freeze_backbone and self.training:
+            with torch.no_grad():
+                features = self.backbone.forward_features(x)  # type: ignore
+        else:
+            features = self.backbone.forward_features(x)  # type: ignore
 
         # Handle different output formats and apply global pooling
         if len(features.shape) == 4:
@@ -337,6 +352,8 @@ class BiomassTransformer(pl.LightningModule):
 
         self.validation_step_outputs.clear()
 
+    @torch.no_grad()
+    @torch.inference_mode()
     def predict_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
         """Inference."""
         preds = self(batch['left_image'], batch['right_image'])

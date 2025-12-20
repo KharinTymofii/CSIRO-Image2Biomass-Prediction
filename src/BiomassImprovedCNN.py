@@ -75,15 +75,18 @@ class BiomassImprovedCNN(pl.LightningModule):
             global_pool=''
         )
 
+        self._freeze_backbone = freeze_backbone
+
         # Get backbone output dimension
         self.backbone_hidden_dim = self._get_backbone_output_dim(
             self.backbone, input_size=backbone_input_size
         )
 
         # Freeze/unfreeze backbone
-        if freeze_backbone:
+        if self._freeze_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
+            self.backbone.eval()
 
         # Spatial attention (only if valid hidden dim)
         if use_spatial_attention and self.backbone_hidden_dim > 0:
@@ -159,9 +162,20 @@ class BiomassImprovedCNN(pl.LightningModule):
 
         self.validation_step_outputs = []
 
+    def train(self, mode: bool = True):
+        """Override train() to keep backbone in eval mode if frozen."""
+        super().train(mode)
+        if self._freeze_backbone:
+            self.backbone.eval()
+        return self
+
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
-        """Extract features from backbone (supports both CNN and ViT)."""
-        features = self.backbone.forward_features(x)  # type: ignore
+        """Extract features from backbone."""
+        if self._freeze_backbone and self.training:
+            with torch.no_grad():
+                features = self.backbone.forward_features(x)  # type: ignore
+        else:
+            features = self.backbone.forward_features(x)  # type: ignore
 
         # Handle different backbone output formats
         if len(features.shape) == 3:
@@ -377,6 +391,8 @@ class BiomassImprovedCNN(pl.LightningModule):
 
         self.validation_step_outputs.clear()
 
+    @torch.no_grad()
+    @torch.inference_mode()
     def predict_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
         """Inference."""
         preds = self(batch['left_image'], batch['right_image'])
